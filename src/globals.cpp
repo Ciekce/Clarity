@@ -1,6 +1,5 @@
 #include "globals.h"
 #include "bmi2.h"
-#include "psqt.h"
 
 int getType(int value) {
     return value & 7;
@@ -22,29 +21,6 @@ int popLSB(uint64_t &bitboard) {
     bitboard &= bitboard - 1;
     return lsb;
 }
-// converts a move to long algebraic form
-std::string toLongAlgebraic(Move move) {
-    std::string longAlgebraic = "";
-    longAlgebraic += squareNames[move.getStartSquare()];
-    longAlgebraic += squareNames[move.getEndSquare()];
-    switch(move.getFlag()) {
-        case promotions[0]:
-            longAlgebraic += 'n';
-            break;
-        case promotions[1]:
-            longAlgebraic += 'b';
-            break;
-        case promotions[2]:
-            longAlgebraic += 'r';
-            break;
-        case promotions[3]:
-            longAlgebraic += 'q';
-            break;
-        default:
-            break;
-    }
-    return longAlgebraic;
-}
 
 std::array<std::array<uint8_t, 218>, 50> reductions;
 
@@ -58,7 +34,6 @@ void calculateReductions() {
 
 void initialize() {
     generateLookups();
-    computePSQTs();
     initializeZobrist();
     calculateReductions();
 }
@@ -71,41 +46,10 @@ std::vector<std::string> split(const std::string string, const char seperator) {
     while (std::getline(stream, segment, seperator)) {
         list.push_back(segment);
     }
-    
-    return list;
-}
 
-void sortMoves(std::array<int, 256> &values, std::array<Move, 256> &moves, int numMoves) {
-    int lowestIndex;
- 
-    // for each value
-    for(int i = 0; i < numMoves - 1; i++) {
- 
-        // find the lowest number that hasn't been sorted yet
-        lowestIndex = i;
-        for(int j = i + 1; j < numMoves; j++) {
-            if (values[j] < values[lowestIndex])
-                lowestIndex = j;
-        }
- 
-        // swap the elements
-        if(lowestIndex != i) {
-            std::swap(values[lowestIndex], values[i]);
-            std::swap(moves[lowestIndex], moves[i]);
-        }
-    }
+    return list;
 }
 
 int flipIndex(int index) {
     return index ^ 56;
-}
-
-// thanks z5
-void incrementalSort(std::array<int, 256> &values, std::array<Move, 256> &moves, int numMoves, int i) {
-    for (int j = i + 1; j < numMoves; j++) {
-        if (values[j] > values[i]) {
-            std::swap(values[j], values[i]);
-            std::swap(moves[j], moves[i]);
-        }
-    }
 }

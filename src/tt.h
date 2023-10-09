@@ -1,6 +1,6 @@
 #pragma once
 
-#include "globals.h"
+#include "board.h"
 
 constexpr uint64_t mask = 0x7FFFFF;
 

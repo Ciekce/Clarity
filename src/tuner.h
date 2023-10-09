@@ -1,4 +1,4 @@
-#include "globals.h"
+#include "board.h"
 
 double sigmoid(int value);
 

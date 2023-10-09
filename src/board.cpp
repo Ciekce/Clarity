@@ -1,13 +1,21 @@
-#include "globals.h"
-#include "psqt.h"
+#include "board.h"
 #include <cstdlib>
 
-// zobrist hashing values 
+// zobrist hashing values
 std::array<std::array<uint64_t, 14>, 64> zobTable;
 // if black is to move this value is xor'ed
 uint64_t zobColorToMove;
 
 int directionalOffsets[] = {8, -8, 1, -1, 7, -7, 9, -9};
+
+template void Board::addPiece<false>(int square, int type);
+template void Board::addPiece<true>(int square, int type);
+
+template void Board::removePiece<false>(int square, int type);
+template void Board::removePiece<true>(int square, int type);
+
+template void Board::movePiece<false>(int square1, int type1, int square2, int type2);
+template void Board::movePiece<true>(int square1, int type1, int square2, int type2);
 
 void Board::toString() {
     for(int rank = 7; rank >= 0; rank--) {
@@ -54,18 +62,12 @@ void Board::toString() {
         std::cout << "En passant square: " << squareNames[enPassantIndex] << '\n';
     }
     std::cout << "Color to move: " << (colorToMove == 0 ? "black" : "white") << '\n';
-    std::cout << "Midgame eval: " << std::to_string(mgEval) << '\n';
-    std::cout << "Endgame eval: " << std::to_string(egEval) << '\n';
-    std::cout << "Phase: " << std::to_string(phase) << '\n';
-    std::cout << "Total eval: " << std::to_string(getEvaluation()) << '\n';
+    std::cout << "Eval: " << std::to_string(getEvaluation()) << '\n';
 }
 
 Board::Board(std::string fen) {
     zobristHistory.clear();
     stateHistory.clear();
-    mgEval = 0;
-    egEval = 0;
-    phase = 0;
     zobristHash = 0;
     for(int i = 0; i < 6; i++) {
         pieceBitboards[i] = 0ULL;
@@ -82,52 +84,52 @@ Board::Board(std::string fen) {
         for(char c : rank) {
             switch(c) {
                 case 'p':
-                    addPiece(i, Pawn | Black);
+                    addPiece<false>(i, Pawn | Black);
                     i++;
                     break;
                 case 'P':
-                    addPiece(i, Pawn | White);
+                    addPiece<false>(i, Pawn | White);
                     i++;
                     break;
                 case 'n':
-                    addPiece(i, Knight | Black);
+                    addPiece<false>(i, Knight | Black);
                     i++;
                     break;
                 case 'N':
-                    addPiece(i, Knight | White);
+                    addPiece<false>(i, Knight | White);
                     i++;
                     break;
                 case 'b':
-                    addPiece(i, Bishop | Black);
+                    addPiece<false>(i, Bishop | Black);
                     i++;
                     break;
                 case 'B':
-                    addPiece(i, Bishop | White);
+                    addPiece<false>(i, Bishop | White);
                     i++;
                     break;
                 case 'r':
-                    addPiece(i, Rook | Black);
+                    addPiece<false>(i, Rook | Black);
                     i++;
                     break;
                 case 'R':
-                    addPiece(i, Rook | White);
+                    addPiece<false>(i, Rook | White);
                     i++;
                     break;
                 case 'q':
-                    addPiece(i, Queen | Black);
+                    addPiece<false>(i, Queen | Black);
                     i++;
                     break;
                 case 'Q':
-                    addPiece(i, Queen | White);
+                    addPiece<false>(i, Queen | White);
                     i++;
                     break;
                 case 'k':
-                    addPiece(i, King | Black);
+                    addPiece<false>(i, King | Black);
                     kingSquares[0] = i;
                     i++;
                     break;
                 case 'K':
-                    addPiece(i, King | White);
+                    addPiece<false>(i, King | White);
                     kingSquares[1] = i;
                     i++;
                     break;
@@ -192,6 +194,7 @@ Board::Board(std::string fen) {
     // ply count, segment 6
     plyCount = ply * 2 - colorToMove;
     //std::cout << "Parsed fen, hash is now " << std::to_string(zobristHash) << '\n';
+    resetNnue();
 }
 
 std::string Board::getFenString() {
@@ -252,19 +255,19 @@ std::string Board::getFenString() {
     fen += ' ';
     bool thingAdded = false;
     if((castlingRights & 1) != 0) {
-        fen += 'K'; 
+        fen += 'K';
         thingAdded = true;
     }
     if((castlingRights & 2) != 0) {
-        fen += 'Q'; 
+        fen += 'Q';
         thingAdded = true;
     }
     if((castlingRights & 4) != 0) {
-        fen += 'k'; 
+        fen += 'k';
         thingAdded = true;
     }
     if((castlingRights & 8) != 0) {
-        fen += 'q'; 
+        fen += 'q';
         thingAdded = true;
     }
     if(thingAdded == false) fen += '-';
@@ -284,6 +287,7 @@ std::string Board::getFenString() {
     return fen;
 }
 
+template <bool UpdateNnue>
 void Board::addPiece(int square, int type) {
     assert(type != None);
     assert(square < 64);
@@ -293,14 +297,12 @@ void Board::addPiece(int square, int type) {
     coloredBitboards[getColor(type)] ^= (1ULL << square);
     pieceBitboards[getType(type)] ^= (1ULL << square);
     assert(pieceAtIndex(square) == type);
-    phase += phaseIncrements[getType(type)];
-    int index = getColor(type) == 1 ? flipIndex(square) : square;
-    int colorMultiplier = 2 * getColor(type) - 1;
-    mgEval += mgTables[getType(type)][index] * colorMultiplier;
-    egEval += egTables[getType(type)][index] * colorMultiplier;
+    if constexpr (UpdateNnue)
+        nnueState.activateFeature(type, square);
     zobristHash ^= zobTable[square][type];
 }
 
+template <bool UpdateNnue>
 void Board::removePiece(int square, int type) {
     assert(type != None);
     assert(square < 64);
@@ -309,22 +311,20 @@ void Board::removePiece(int square, int type) {
     //std::cout << "Removing piece of type " << std::to_string(type) << " at index " << std::to_string(square) << '\n';
     coloredBitboards[getColor(type)] ^= (1ULL << square);
     pieceBitboards[getType(type)] ^= (1ULL << square);
-    phase -= phaseIncrements[getType(type)];
-    int index = getColor(type) == 1 ? flipIndex(square) : square;
-    int colorMultiplier = 2 * getColor(type) - 1;
-    mgEval -= mgTables[getType(type)][index] * colorMultiplier;
-    egEval -= egTables[getType(type)][index] * colorMultiplier;
+    if constexpr (UpdateNnue)
+        nnueState.deactivateFeature(type, square);
     zobristHash ^= zobTable[square][type];
     assert(pieceAtIndex(square) == None);
 }
 
+template <bool UpdateNnue>
 void Board::movePiece(int square1, int type1, int square2, int type2) {
     assert(type1 != None);
     assert(square1 < 64);
     assert(square2 < 64);
-    if(type2 != None) removePiece(square2, type2);
-    addPiece(square2, type1);
-    removePiece(square1, type1);
+    if(type2 != None) removePiece<UpdateNnue>(square2, type2);
+    addPiece<UpdateNnue>(square2, type1);
+    removePiece<UpdateNnue>(square1, type1);
 }
 
 int Board::pieceAtIndex(int index) const {
@@ -382,7 +382,7 @@ int Board::getMoves(std::array<Move, 256> &moves) {
                 }
                 if((castlingRights & 8) != 0 && (occupiedBitboard & 0xE00000000000000) == 0 && !squareIsUnderAttack(59) && pieceAtIndex(56) == Rook) {
                     moves[totalMoves] = Move(60, 58, castling[3]);
-                    totalMoves++;   
+                    totalMoves++;
                 }
             }
         }
@@ -405,7 +405,7 @@ int Board::getMoves(std::array<Move, 256> &moves) {
             total = getKingAttacks(startSquare);
         }
         // get rid of capturing your own pieces
-        total ^= (total & coloredBitboards[colorToMove]); 
+        total ^= (total & coloredBitboards[colorToMove]);
         while(total != 0) {
             moves[totalMoves] = Move(startSquare, popLSB(total), Normal);
             totalMoves++;
@@ -434,7 +434,7 @@ int Board::getMoves(std::array<Move, 256> &moves) {
     while(pawnPushPromotions != 0) {
         uint8_t index = popLSB(pawnPushPromotions);
         uint8_t startSquare = (index + directionalOffsets[colorToMove]);
-        for(int type = Knight; type < King; type++) { 
+        for(int type = Knight; type < King; type++) {
             moves[totalMoves] = Move(startSquare, index, promotions[type-1]);
             totalMoves++;
         }
@@ -472,7 +472,7 @@ int Board::getMoves(std::array<Move, 256> &moves) {
     while(leftCapturePromotions != 0) {
         int index = popLSB(leftCapturePromotions);
         int startSquare = index + (colorToMove == 0 ? 9 : -7);
-        for(int type = Knight; type < King; type++) { 
+        for(int type = Knight; type < King; type++) {
             moves[totalMoves] = Move(startSquare, index, promotions[type-1]);
             totalMoves++;
         }
@@ -480,7 +480,7 @@ int Board::getMoves(std::array<Move, 256> &moves) {
     while(rightCapturePromotions != 0) {
         int index = popLSB(rightCapturePromotions);
         int startSquare = index + (colorToMove == 0 ? 7 : -9);
-        for(int type = Knight; type < King; type++) { 
+        for(int type = Knight; type < King; type++) {
             moves[totalMoves] = Move(startSquare, index, promotions[type-1]);
             totalMoves++;
         }
@@ -509,7 +509,7 @@ int Board::getMovesQSearch(std::array<Move, 256> &moves) {
             total = getKingAttacks(startSquare);
         }
         // Only captures or (not done yet) checks
-        total &= coloredBitboards[1 - colorToMove]; 
+        total &= coloredBitboards[1 - colorToMove];
         while(total != 0) {
             moves[totalMoves] = Move(startSquare, popLSB(total), Normal);
             totalMoves++;
@@ -549,7 +549,7 @@ int Board::getMovesQSearch(std::array<Move, 256> &moves) {
     while(leftCapturePromotions != 0) {
         int index = popLSB(leftCapturePromotions);
         int startSquare = index + (colorToMove == 0 ? 9 : -7);
-        for(int type = Knight; type < King; type++) { 
+        for(int type = Knight; type < King; type++) {
             moves[totalMoves] = Move(startSquare, index, promotions[type-1]);
             totalMoves++;
         }
@@ -557,7 +557,7 @@ int Board::getMovesQSearch(std::array<Move, 256> &moves) {
     while(rightCapturePromotions != 0) {
         int index = popLSB(rightCapturePromotions);
         int startSquare = index + (colorToMove == 0 ? 7 : -9);
-        for(int type = Knight; type < King; type++) { 
+        for(int type = Knight; type < King; type++) {
             moves[totalMoves] = Move(startSquare, index, promotions[type-1]);
             totalMoves++;
         }
@@ -604,6 +604,7 @@ bool Board::squareIsUnderAttack(int square) {
 
 bool Board::makeMove(Move move) {
     stateHistory.push_back(generateBoardState());
+    nnueState.push();
     if(colorToMove != 1) fiftyMoveCounter++;
     hundredPlyCounter++;
     int movedPiece = pieceAtIndex(move.getStartSquare());
@@ -612,7 +613,7 @@ bool Board::makeMove(Move move) {
         hundredPlyCounter = 0;
         fiftyMoveCounter = 0;
     }
-    movePiece(move.getStartSquare(), movedPiece, move.getEndSquare(), pieceAtIndex(move.getEndSquare()));
+    movePiece<true>(move.getStartSquare(), movedPiece, move.getEndSquare(), pieceAtIndex(move.getEndSquare()));
     enPassantIndex = 64;
     if(move.getFlag() == DoublePawnPush) enPassantIndex = move.getEndSquare() + directionalOffsets[colorToMove];
     if(getType(movedPiece) == King) {
@@ -642,39 +643,39 @@ bool Board::makeMove(Move move) {
     }
     if(move.getFlag() == castling[0]) {
         assert(pieceAtIndex(7) != None);
-        movePiece(7, pieceAtIndex(7), 5, None);
+        movePiece<true>(7, pieceAtIndex(7), 5, None);
         castlingRights ^= (1 & castlingRights);
         castlingRights ^= (2 & castlingRights);
     } else if(move.getFlag() == castling[1]) {
         assert(pieceAtIndex(0) != None);
-        movePiece(0, pieceAtIndex(0), 3, None);
+        movePiece<true>(0, pieceAtIndex(0), 3, None);
         castlingRights ^= (1 & castlingRights);
         castlingRights ^= (2 & castlingRights);
     } else if(move.getFlag() == castling[2]) {
         assert(pieceAtIndex(63) != None);
-        movePiece(63, pieceAtIndex(63), 61, None);
+        movePiece<true>(63, pieceAtIndex(63), 61, None);
         castlingRights ^= (4 & castlingRights);
         castlingRights ^= (8 & castlingRights);
     } else if(move.getFlag() == castling[3]) {
         assert(pieceAtIndex(56) != None);
-        movePiece(56, pieceAtIndex(56), 59, None);
+        movePiece<true>(56, pieceAtIndex(56), 59, None);
         castlingRights ^= (4 & castlingRights);
         castlingRights ^= (8 & castlingRights);
     } else if(move.getFlag() == promotions[0]) {
-        removePiece(move.getEndSquare(), movedPiece);
-        addPiece(move.getEndSquare(), Knight | (colorToMove == 1 ? White : Black));
+        removePiece<true>(move.getEndSquare(), movedPiece);
+        addPiece<true>(move.getEndSquare(), Knight | (colorToMove == 1 ? White : Black));
     } else if(move.getFlag() == promotions[1]) {
-        removePiece(move.getEndSquare(), movedPiece);
-        addPiece(move.getEndSquare(), Bishop | (colorToMove == 1 ? White : Black));
+        removePiece<true>(move.getEndSquare(), movedPiece);
+        addPiece<true>(move.getEndSquare(), Bishop | (colorToMove == 1 ? White : Black));
     } else if(move.getFlag() == promotions[2]) {
-        removePiece(move.getEndSquare(), movedPiece);
-        addPiece(move.getEndSquare(), Rook | (colorToMove == 1 ? White : Black));
+        removePiece<true>(move.getEndSquare(), movedPiece);
+        addPiece<true>(move.getEndSquare(), Rook | (colorToMove == 1 ? White : Black));
     } else if(move.getFlag() == promotions[3]) {
-        removePiece(move.getEndSquare(), movedPiece);
-        addPiece(move.getEndSquare(), Queen | (colorToMove == 1 ? White : Black));
+        removePiece<true>(move.getEndSquare(), movedPiece);
+        addPiece<true>(move.getEndSquare(), Queen | (colorToMove == 1 ? White : Black));
     } else if(move.getFlag() == EnPassant) {
         assert(pieceAtIndex(move.getEndSquare() + directionalOffsets[colorToMove]) != None);
-        removePiece(move.getEndSquare() + directionalOffsets[colorToMove], pieceAtIndex(move.getEndSquare() + directionalOffsets[colorToMove]));
+        removePiece<true>(move.getEndSquare() + directionalOffsets[colorToMove], pieceAtIndex(move.getEndSquare() + directionalOffsets[colorToMove]));
     }
     plyCount++;
     isRepeated = isRepeatedPosition();
@@ -695,8 +696,9 @@ bool Board::makeMove(Move move) {
 void Board::undoMove() {
     loadBoardState(stateHistory.back());
     plyCount--;
-    stateHistory.pop_back();  
+    stateHistory.pop_back();
     zobristHistory.pop_back();
+    nnueState.pop();
     colorToMove = 1 - colorToMove;
     //std::cout << "Changing Color To Move in undo move\n";
     // no zobrist update here because the saved zobrist hash is before the color changed
@@ -710,9 +712,6 @@ void Board::loadBoardState(BoardState state) {
     fiftyMoveCounter = state.fiftyMoveCounter;
     castlingRights = state.castlingRights;
     zobristHash = state.zobristHash;
-    mgEval = state.mgEval;
-    egEval = state.egEval;
-    phase = state.phase;
     isRepeated = state.isRepeated;
     hundredPlyCounter = state.hundredPlyCounter;
 }
@@ -726,12 +725,20 @@ BoardState Board::generateBoardState() {
     state.fiftyMoveCounter = fiftyMoveCounter;
     state.castlingRights = castlingRights;
     state.zobristHash = zobristHash;
-    state.mgEval = mgEval;
-    state.egEval = egEval;
-    state.phase = phase;
     state.isRepeated = isRepeated;
     state.hundredPlyCounter = hundredPlyCounter;
     return state;
+}
+
+void Board::resetNnue() {
+    nnueState.reset();
+
+    uint64_t mask = getOccupiedBitboard();
+    while(mask != 0) {
+        int index = popLSB(mask);
+        int piece = pieceAtIndex(index);
+        nnueState.activateFeature(piece, index);
+    }
 }
 
 uint64_t Board::getCurrentPlayerBitboard() const {
@@ -752,11 +759,8 @@ void Board::undoChangeColor() {
     zobristHash ^= zobColorToMove;
 }
 
-int Board::getEvaluation() {    
-    // currently disabled passed pawn bonuses, as it wasn't gaining any elo
-    int egPhase = 24 - phase;
-    return ((mgEval * phase + egEval * egPhase) / 24) * ((2 * colorToMove) - 1);
-    //return (((mgEval * phase + egEval * egPhase) / 24) + getPassedPawnBonuses()) * ((2 * colorToMove) - 1);
+int Board::getEvaluation() {
+    return nnueState.evaluate(colorToMove) / 2;
 }
 
 int Board::getCastlingRights() {
@@ -782,29 +786,6 @@ void initializeZobrist() {
     }
 }
 
-int Board::taperValue(int mg, int eg) {
-    int egPhase = 24 - phase;
-    return ((mg * phase + eg * egPhase) / 24);
-}
-
-int Board::fullEvalRegen() {
-    uint64_t mask = getOccupiedBitboard();
-    int midgame = 0;
-    int endgame = 0;
-    int currentPhase = 0;
-    while(mask != 0) {
-        int index = popLSB(mask);
-        int piece = pieceAtIndex(index);
-        int pieceType = getType(piece);
-        int pieceColor = getColor(piece);
-        midgame += mgTables[pieceType][pieceColor == 1 ? flipIndex(index) : index] * ((2 * pieceColor) - 1);
-        endgame += egTables[pieceType][pieceColor == 1 ? flipIndex(index) : index] * ((2 * pieceColor) - 1);
-        currentPhase += phaseIncrements[pieceType];
-    }
-    int egPhase = 24 - currentPhase;
-    return ((midgame * currentPhase + endgame * egPhase) / 24) * ((2 * colorToMove) - 1);
-}
-
 uint64_t Board::fullZobristRegen() {
     //std::cout << "Beginning Full Regen\n";
     uint64_t mask = getOccupiedBitboard();
@@ -823,32 +804,66 @@ uint64_t Board::fullZobristRegen() {
     return result;
 }
 
-int Board::getPassedPawnBonuses() {
-    int mgBonuses = 0;
-    int egBonuses = 0;
-    uint64_t mask = pieceBitboards[Pawn];
-    uint64_t allPawns = mask;
-    while(mask != 0) {
-        int index = popLSB(mask);
-        int color = colorAtIndex(index);
-        assert(color != 2);
-        
-        if((getPassedPawnMask(index, color) & allPawns) == 0) {
-            int square = color == 1 ? flipIndex(index) : index;
-            int colorMultiplier = 2 * color - 1;
-            mgBonuses += mgPassedPawnBonusTable[square] * colorMultiplier;
-            egBonuses += egPassedPawnBonusTable[square] * colorMultiplier;
-        }
-    }
-
-    return taperValue(mgBonuses, egBonuses);
-}
-
 bool Board::isRepeatedPosition() {
-    for(int i = std::ssize(zobristHistory) - 2; i >= std::ssize(zobristHistory) - hundredPlyCounter; i--) {
+    for(int i = std::ssize(zobristHistory) - 2; i >= std::ssize(zobristHistory) - hundredPlyCounter && i >= 0; i--) {
         if(zobristHistory[i] == zobristHash) {
             return true;
         }
     }
     return false;
+}
+
+// converts a move to long algebraic form
+std::string toLongAlgebraic(Move move) {
+    std::string longAlgebraic = "";
+    longAlgebraic += squareNames[move.getStartSquare()];
+    longAlgebraic += squareNames[move.getEndSquare()];
+    switch(move.getFlag()) {
+        case promotions[0]:
+            longAlgebraic += 'n';
+            break;
+        case promotions[1]:
+            longAlgebraic += 'b';
+            break;
+        case promotions[2]:
+            longAlgebraic += 'r';
+            break;
+        case promotions[3]:
+            longAlgebraic += 'q';
+            break;
+        default:
+            break;
+    }
+    return longAlgebraic;
+}
+
+void sortMoves(std::array<int, 256> &values, std::array<Move, 256> &moves, int numMoves) {
+    int lowestIndex;
+
+    // for each value
+    for(int i = 0; i < numMoves - 1; i++) {
+
+        // find the lowest number that hasn't been sorted yet
+        lowestIndex = i;
+        for(int j = i + 1; j < numMoves; j++) {
+            if (values[j] < values[lowestIndex])
+                lowestIndex = j;
+        }
+
+        // swap the elements
+        if(lowestIndex != i) {
+            std::swap(values[lowestIndex], values[i]);
+            std::swap(moves[lowestIndex], moves[i]);
+        }
+    }
+}
+
+// thanks z5
+void incrementalSort(std::array<int, 256> &values, std::array<Move, 256> &moves, int numMoves, int i) {
+    for (int j = i + 1; j < numMoves; j++) {
+        if (values[j] > values[i]) {
+            std::swap(values[j], values[i]);
+            std::swap(moves[j], moves[i]);
+        }
+    }
 }

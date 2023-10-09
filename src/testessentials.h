@@ -1,6 +1,6 @@
 // something something header guards, blame toanth if it doesn't work
 #pragma once
-#include "globals.h"
+#include "board.h"
 
 struct PerftTest {
     public:

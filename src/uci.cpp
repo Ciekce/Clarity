@@ -1,4 +1,5 @@
 #include "globals.h"
+#include "board.h"
 #include "testessentials.h"
 #include "search.h"
 #include "tuner.h"
@@ -38,8 +39,8 @@ void sigmoidTest() {
 }*/
 
 void identify() {
-    std::cout << "id name Clarity V0.1.0\n";
-    std::cout << "id author Vast\n";
+    std::cout << "id name ClarityNNUE V0.1.0\n";
+    std::cout << "id author Vast and Ciekce\n";
 }
 
 void go(std::vector<std::string> bits) {
@@ -85,7 +86,7 @@ void interpretCommand(std::string command) {
     } else if(bits[0] == "go") {
         go(bits);
     } else if(bits[0] == "ucinewgame") {
-        newGame();    
+        newGame();
     } else if(bits[0] == "perft") {
         individualPerft(board, std::stoi(bits[1]));
     } else if(bits[0] == "splitperft") {
@@ -93,7 +94,7 @@ void interpretCommand(std::string command) {
     } else if(bits[0] == "evaluate") {
         std::cout << "evaluation " << board.getEvaluation() << '\n';
     } else if(bits[0] == "showstate") {
-        board.toString();    
+        board.toString();
     } else if(bits[0] == "geterror") {
         double averageError = calculateAverageError();
         std::cout << "average error: " << std::to_string(averageError) << '\n';

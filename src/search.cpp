@@ -1,5 +1,4 @@
 #include "search.h"
-#include "psqt.h"
 #include "tt.h"
 
 const int startDepth = 3;
@@ -67,7 +66,7 @@ int qSearch(Board &board, int alpha, int beta) {
     int bestScore = board.getEvaluation();
     if(bestScore >= beta) return bestScore;
     if(alpha < bestScore) alpha = bestScore;
-  
+
     // get the legal moves and sort them
     std::array<Move, 256> moves;
     int totalMoves = board.getMovesQSearch(moves);
@@ -76,7 +75,7 @@ int qSearch(Board &board, int alpha, int beta) {
     // values useful for writing to TT later
     Move bestMove;
     int flag = FailLow;
-  
+
     // loop though all the moves
     for(int i = 0; i < totalMoves; i++) {
         if(board.makeMove(moves[i])) {
@@ -94,7 +93,7 @@ int qSearch(Board &board, int alpha, int beta) {
                 bestMove = moves[i];
 
                 // Improve alpha
-                if(score > alpha) { 
+                if(score > alpha) {
                     flag = Exact;
                     alpha = score;
                 }
@@ -111,7 +110,7 @@ int qSearch(Board &board, int alpha, int beta) {
     // push to TT
     TT.setEntry(board.zobristHash, Transposition(board.zobristHash, bestMove, flag, bestScore, 0));
 
-    return bestScore;  
+    return bestScore;
 }
 
 int negamax(Board &board, int depth, int alpha, int beta, int ply, bool nmpAllowed) {
@@ -211,7 +210,7 @@ int negamax(Board &board, int depth, int alpha, int beta, int ply, bool nmpAllow
 
                 // Improve alpha
                 if(score > alpha) {
-                    flag = Exact; 
+                    flag = Exact;
                     alpha = score;
                 }
 

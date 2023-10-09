@@ -1,6 +1,6 @@
 #pragma once
 
-#include "globals.h"
+#include "board.h"
 
 void resetEngine();
 Move think(Board board, int timeLeft);

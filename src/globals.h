@@ -39,94 +39,10 @@ enum Pieces {
 constexpr int Black = 0;
 constexpr int White = 8;
 
-
-// structs and stuff
-struct Board;
-
-struct BoardState {
-    std::array<uint64_t, 2> coloredBitboards;
-    std::array<uint64_t, 6> pieceBitboards;
-    uint8_t enPassantIndex;
-    std::array<uint8_t, 2> kingSquares;
-    uint8_t fiftyMoveCounter;
-    uint8_t hundredPlyCounter;
-    uint8_t castlingRights;
-    uint64_t zobristHash;
-    int mgEval;
-    int egEval;
-    int phase;
-    bool isRepeated;
-};
-
-struct Move {
-    public:
-        int getStartSquare();
-        int getEndSquare();
-        int getFlag();
-        int getValue();
-        Move(int startSquare, int endSquare, int flag);
-        Move();
-        Move(std::string longAlgebraic, Board board);
-    private: 
-        uint16_t value;
-};
-
-struct Board {
-    public:
-        uint64_t zobristHash;
-        bool isRepeated;
-        Board(std::string fen);
-        bool makeMove(Move move);
-        void undoMove();
-        int getMoves(std::array<Move, 256> &moves);
-        int getMovesQSearch(std::array<Move, 256> &moves);
-        std::string getFenString();
-        bool isInCheck();
-        bool squareIsUnderAttack(int square);
-        void toString();
-        uint8_t getColorToMove();
-        uint64_t getCurrentPlayerBitboard() const;
-        uint64_t getOccupiedBitboard() const;
-        uint64_t getColoredPieceBitboard(int color, int piece) const;
-        int pieceAtIndex(int index) const;
-        int colorAtIndex(int index) const;
-        void changeColor();
-        void undoChangeColor();
-        int getEvaluation();
-        int getCastlingRights();
-        int getEnPassantIndex();
-        int taperValue(int mg, int eg);
-        int fullEvalRegen();
-        uint64_t fullZobristRegen();
-        bool isRepeatedPosition();
-    private:
-        std::array<uint64_t, 2> coloredBitboards;
-        std::array<uint64_t, 6> pieceBitboards;
-        uint8_t enPassantIndex;
-        std::array<uint8_t, 2> kingSquares;
-        int plyCount;
-        uint8_t hundredPlyCounter;
-        uint8_t fiftyMoveCounter;
-        uint8_t castlingRights;
-        uint8_t colorToMove;
-        int mgEval;
-        int egEval;
-        int phase;
-        std::vector<BoardState> stateHistory;
-        std::vector<uint64_t> zobristHistory;
-        void addPiece(int square, int type);
-        void removePiece(int square, int type);
-        void movePiece(int square1, int type1, int square2, int type2);
-        void loadBoardState(BoardState state);
-        BoardState generateBoardState();
-        int getPassedPawnBonuses();
-};
-
 // the eternal functions, can be used everywhere
 [[nodiscard]]int getType(int value);
 [[nodiscard]]int getColor(int value);
 [[nodiscard]]int popLSB(uint64_t &bitboard);
-[[nodiscard]]std::string toLongAlgebraic(Move move);
 [[nodiscard]]uint64_t getRankMask(int rank);
 [[nodiscard]]uint64_t getFileMask(int file);
 [[nodiscard]]uint64_t getRookAttacksOld(int square, uint64_t occupiedBitboard);
@@ -141,8 +57,6 @@ struct Board {
 void initializeZobrist();
 void initialize();
 std::vector<std::string> split(const std::string string, const char seperator);
-void sortMoves(std::array<int, 256> &values, std::array<Move, 256> &moves, int numMoves);
-void incrementalSort(std::array<int, 256> &values, std::array<Move, 256> &moves, int numMoves, int i);
 int flipIndex(int index);
 uint64_t getPassedPawnMask(int square, int colorToMove);
 extern int rootColorToMove;
@@ -152,5 +66,10 @@ constexpr std::array<uint8_t, 4> castling = {0b0001, 0b0010, 0b0011, 0b0100};
 constexpr std::array<uint8_t, 4> promotions = {0b0101, 0b0110, 0b0111, 0b1000};
 constexpr uint8_t EnPassant = 0b1001;
 constexpr uint8_t DoublePawnPush = 0b1010;
+
+extern std::array<std::array<uint8_t, 218>, 50> reductions;
+
+constexpr int mg_value[6] = { 82, 337, 365, 477, 1025,  0};
+constexpr int eg_value[6] = { 94, 281, 297, 512,  936,  0};
 
 
