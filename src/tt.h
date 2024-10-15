@@ -29,8 +29,7 @@ constexpr uint16_t shrink(uint64_t hash) {
     return (hash & 0xFFFF);
 }
 
-// this gives me a 64mb hash table
-constexpr uint64_t defaultSize = 6710886;
+constexpr size_t defaultSizeMB = 64;
 
 #pragma pack(push, 1)
 struct Transposition {
@@ -59,31 +58,18 @@ struct Transposition {
 };
 #pragma pack(pop)
 
+static_assert(sizeof(Transposition) == 10);
+
 struct TranspositionTable {
     public:
-        int getScore(uint64_t zkey);
-        Move getBestMove(uint64_t zkey);
-        bool matchZobrist(uint64_t zkey);
-        uint8_t getFlag(uint64_t zkey);
         Transposition* getEntry(uint64_t zkey);
-        int getDepth(uint64_t zkey);
         void setEntry(uint64_t zkey, Transposition entry);
-        void setScore(uint64_t zkey, int score);
-        void setBestMove(uint64_t zkey, Move bestMove);
-        void setZobrist(uint64_t zkey);
-        void setFlag(uint64_t zkey, uint8_t flag);
-        void setDepth(uint64_t zkey, uint16_t depth);
         void clearTable();
-        void resize(int newSize);
-        TranspositionTable() {
-            resize(defaultSize);
-            clearTable();
+        void resize(size_t newSizeMB);
+        TranspositionTable(size_t sizeMB = defaultSizeMB) {
+            resize(sizeMB);
         }
-        TranspositionTable(int newSize) {
-            resize(newSize);
-            clearTable();
-        }
-        uint64_t size;
+        size_t size;
     private:
         std::vector<Transposition> table;
 };
